@@ -1,0 +1,288 @@
+{
+  "name": "RepoRadarAI- Metadata",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks",
+              "triggerAtDay": [
+                1
+              ],
+              "triggerAtHour": 2
+            }
+          ]
+        }
+      },
+      "id": "3f1a2c44-1d5e-4b8a-9c21-7e0d6a4b1101",
+      "name": "Basla",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        32,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "\n// AUDIT 2026-09-11 | SABIT KADEME KALDIRILDI.\n//\n// ONCE: `const KADEME = 'meta5';` - BES PARCADAN BIRI, ELLE yazilmis.\n// Haftalik zamanlansaydi her hafta AYNI 4.933 repoyu (kulliyatin 1/5'i)\n// tazeler, diger %80'i SONSUZA KADAR bayat birakirdi. Hata da vermezdi.\n//\n// SIMDI: bes parcanin hepsi okunur, her repo KENDI kademesini tasir\n// (cikti dosyasi kademe basina; `Satir Ekle` artik dugum yerine SATIRDAN okur).\nconst fs = require('fs');\nconst GIRDI = '/data/ds21final/input/';\nconst cikti = [];\nfor (let i = 1; i <= 5; i++) {\n  const kademe = 'meta' + i;\n  const yol = GIRDI + 'repos_' + kademe + '.csv';\n  if (!fs.existsSync(yol)) { continue; }\n  const satirlar = fs.readFileSync(yol, 'utf8').split('\\n');\n  for (let k = 1; k < satirlar.length; k++) {\n    const s = satirlar[k].trim();\n    if (!s) { continue; }\n    const ad = s.split(',')[0];\n    if (!ad || ad.indexOf('/') < 0) { continue; }\n    cikti.push({ json: { full_name: ad, kademe: kademe } });\n  }\n}\nconsole.log('kulliyat=' + cikti.length + ' (5 kademe birlestirildi)');\nreturn cikti;\n"
+      },
+      "id": "3f1a2c44-1d5e-4b8a-9c21-7e0d6a4b1102",
+      "name": "Kademe Secimi",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        272,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "\n// AUDIT 2026-09-11 | VARLIK -> YAS TABANLI ONBELLEK.\n//\n// ONCE: meta_<kademe>.jsonl'de adi gecen repo ATLANIYORDU. Dosyalar 07.09'dan\n// DOLU oldugu icin zamanlanmis bir tur HER SEYI atlar ve BOS gecerdi - \"basarili\"\n// raporuyla. Devam-edebilirlik icin dogruydu, TAZELEME icin olumcul.\n//\n// SIMDI: repo basina SON kayit bulunur; `cekilme` TAZELEME_GUN'den yeniyse atlanir.\n// ETag da tasinir - degismemisse GitHub 304 doner ve kota sayacina GIRMEZ.\n// KALICI hatalar (404/410) meta_misses.jsonl'de, onlar hep atlanir.\nconst fs = require('fs');\nconst DIZIN = '/data/ds21final/meta/';\nconst KAYIP = '/data/ds21final/logs/meta_misses.jsonl';\nconst TAZELEME_GUN = 7;\n\nfunction satirlar(yol) {\n  try { return fs.readFileSync(yol, 'utf8').split('\\n').filter(function (l) { return l.trim(); }); }\n  catch (e) { return []; }\n}\n\n// repo -> {cekilme, etag}, EN SON kayit kazanir (refresh_csv.py ile ayni kural)\nconst son = {};\nfor (let i = 1; i <= 5; i++) {\n  satirlar(DIZIN + 'meta_meta' + i + '.jsonl').forEach(function (l) {\n    try {\n      const r = JSON.parse(l);\n      const ad = (r.repo && r.repo.full_name) || r.full_name;\n      if (!ad) { return; }\n      const o = son[ad];\n      if (!o || String(r.cekilme || '') >= String(o.cekilme || '')) {\n        son[ad] = { cekilme: r.cekilme, etag: r.etag || '' };\n      }\n    } catch (e) {}\n  });\n}\nconst kalici = new Set();\nsatirlar(KAYIP).forEach(function (l) {\n  try { const r = JSON.parse(l); if (r.full_name) { kalici.add(r.full_name); } } catch (e) {}\n});\n\nfunction yasGun(iso) {\n  if (!iso) { return 1e9; }\n  const t = new Date(iso).getTime();\n  return isNaN(t) ? 1e9 : (Date.now() - t) / 86400000;\n}\n\nconst hepsi = $input.all();\nconst kalan = [];\nlet taze = 0, gone = 0;\nhepsi.forEach(function (it) {\n  const ad = it.json.full_name;\n  if (kalici.has(ad)) { gone++; return; }\n  const o = son[ad];\n  if (o && yasGun(o.cekilme) <= TAZELEME_GUN) { taze++; return; }\n  it.json.etag = (o && o.etag) || '';\n  kalan.push(it);\n});\n\nconsole.log('toplam=' + hepsi.length + ' taze=' + taze + ' kalici_hata=' + gone +\n            ' cekilecek=' + kalan.length + ' (esik ' + TAZELEME_GUN + ' gun)');\ntry {\n  fs.writeFileSync('/data/ds21final/logs/_meta_son_baslangic.json', JSON.stringify({\n    an: new Date().toISOString(), toplam: hepsi.length,\n    taze: taze, kalici_hata: gone, cekilecek: kalan.length,\n    tazeleme_gun: TAZELEME_GUN\n  }, null, 2));\n} catch (e) {}\nreturn kalan;\n"
+      },
+      "id": "3f1a2c44-1d5e-4b8a-9c21-7e0d6a4b1105",
+      "name": "Onbellektekileri Atla",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        528,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "batchSize": 100,
+        "options": {}
+      },
+      "id": "3f1a2c44-1d5e-4b8a-9c21-7e0d6a4b1106",
+      "name": "Gruplara Bol",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        752,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://api.github.com/repos/{{ $json.full_name }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/vnd.github+json"
+            },
+            {
+              "name": "X-GitHub-Api-Version",
+              "value": "2022-11-28"
+            }
+          ]
+        },
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 4,
+              "batchInterval": 3000
+            }
+          },
+          "response": {
+            "response": {
+              "fullResponse": true
+            }
+          },
+          "timeout": 30000
+        }
+      },
+      "id": "3f1a2c44-1d5e-4b8a-9c21-7e0d6a4b1107",
+      "name": "GitHub Meta",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1008,
+        48
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "vDN3h67wrzP8yMqQ",
+          "name": "GitHub PAT"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Repo basina AYRI DOSYA degil, kademe basina JSONL.\n// 24.664 kucuk dosya bu bind mount'ta (gRPC-FUSE) daha once hizi\n// 5,3 repo/sn'den 0,3'e dusurmustu - README akisinda olculdu.\n//\n// ANAHTAR: govde.full_name - API'nin KENDI kimlik beyani.\n// pairedItem KULLANILMIYOR. 2026-09-07'de olculdu: bu dugumde pairedItem\n// yanlis hizalaniyor ve baska bir reponun yanitina yanlis ad yapistiriyordu.\n// Kanit: \"yeniden adlandirilmis\" isaretlenen 266 satirin 243'unde HER IKI ad\n// da CSV'de vardi (gercek bir renamede imkansiz), ve A->B, B->C seklinde\n// kayma zinciri gorunuyordu. 3 kayitlik sonda temiz cikmisti; batching\n// (4 istek/3 sn) ve hata dali devredeyken bozuluyor.\n//\n// SONUC: istenen ad ile yanit adi arasindaki fark burada COZULMEZ.\n// Yeniden adlandirilan repolar yanit adiyla yazilir, CSV ile eslesmezler ve\n// refresh_csv.py onlari \"tazelenmemis\" sayar. Uzlastirma Python tarafinda,\n// tam bilgiyle yapilir - n8n yalnizca KESIN bildigini yazar.\nconst fs = require('fs');\n// AUDIT 2026-09-11 | kademe artik DUGUMDEN degil SATIRDAN geliyor:\n// tur artik tek kademe degil TUM kulliyati isliyor, yani her repo\n// kendi cikti dosyasina yazilmali. $('...').first() hepsini ayni\n// dosyaya yazardi ve refresh_csv.py'nin glob'u onu yine okurdu ama\n// kademe dosyalari anlamsizlasirdi.\nconst kademe = $input.first().json.kademe || 'tazeleme';\nconst CIKTI = '/data/ds21final/meta/meta_' + kademe + '.jsonl';\n\nconst satirlar = [];\nvar atlanan = 0;\n\nfor (const it of $input.all()) {\n  const j = it.json || {};\n  const govde = j.body || {};\n  const basliklar = j.headers || {};\n\n  // Kimliksiz satir YAZILMAZ: birlestirme full_name ile yapiliyor.\n  if (!govde.full_name) { atlanan++; continue; }\n\n  satirlar.push(JSON.stringify({\n    full_name: govde.full_name,        // API'nin beyani - TEK guvenilir anahtar\n    etag: basliklar.etag || null,      // Faz 6: If-None-Match -> 304 kota harcamaz\n    status: j.statusCode || null,\n    cekilme: new Date().toISOString(),\n    repo: govde\n  }));\n}\n\nif (satirlar.length) {\n  fs.appendFileSync(CIKTI, satirlar.join('\\n') + '\\n', 'utf8');\n}\nif (atlanan) {\n  console.log('UYARI: full_name olmadigi icin ' + atlanan + ' yanit yazilmadi');\n}\n\n// Repo govdelerini donguye geri VERMIYORUZ - 24.664 x ~5 KB bellekte birikirdi.\nreturn [{ json: { yazildi: satirlar.length, atlanan: atlanan } }];"
+      },
+      "id": "3f1a2c44-1d5e-4b8a-9c21-7e0d6a4b1108",
+      "name": "Satir Ekle",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1296,
+        32
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Hata dalindaki item'in sekli 2026-09-06 duman testinde OLCULDU:\n// ['full_name', 'safe_name', 'error'] - n8n girdi item'ini koruyup uzerine\n// 'error' ekliyor, yani full_name'i geri kazanmak guvenli.\nconst fs = require('fs');\nconst kademe = $('Kademe Secimi').first().json.kademe;\nconst KAYIP_YOL = '/data/ds21final/logs/meta_misses.jsonl';\n\nconst satirlar = $input.all().map(function (it) {\n  const j = it.json || {};\n  const e = j.error || {};\n  const durum = e.httpCode || e.status || e.statusCode || j.statusCode || null;\n  return JSON.stringify({\n    an: new Date().toISOString(),\n    kademe: kademe,\n    full_name: j.full_name || null,\n    status: durum ? Number(durum) : null,\n    mesaj: String(e.message || j.message || '').slice(0, 200)\n  });\n});\n\nif (satirlar.length) {\n  fs.appendFileSync(KAYIP_YOL, satirlar.join('\\n') + '\\n', 'utf8');\n}\nconsole.log('kayip=' + satirlar.length);\n\nreturn [{ json: { kayip: satirlar.length } }];"
+      },
+      "id": "3f1a2c44-1d5e-4b8a-9c21-7e0d6a4b1109",
+      "name": "Kayip Kaydet",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1296,
+        224
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "3f1a2c44-1d5e-4b8a-9c21-7e0d6a4b1110",
+      "name": "Bitti",
+      "type": "n8n-nodes-base.limit",
+      "typeVersion": 1,
+      "position": [
+        1008,
+        -144
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Dongu bittiginde BIR kez calisir. 'Bitti' (Limit 1) bunun icin var:\n// splitInBatches'in main[0] cikisi 'done' dalidir, main[1] ise dongu govdesi.\nconst fs = require('fs');\nconst kademe = $('Kademe Secimi').first().json.kademe;\nconst CIKTI = '/data/ds21final/meta/meta_' + kademe + '.jsonl';\n\nfunction satirSay(yol) {\n  try {\n    return fs.readFileSync(yol, 'utf8').split('\\n').filter(function (l) { return l.trim(); }).length;\n  } catch (e) { return 0; }\n}\n\nconst rapor = {\n  an: new Date().toISOString(),\n  kademe: kademe,\n  dosya: CIKTI,\n  yazilan_satir: satirSay(CIKTI),\n  kayip_satir: satirSay('/data/ds21final/logs/meta_misses.jsonl')\n};\n\ntry {\n  fs.writeFileSync('/data/ds21final/logs/_meta_rapor.json', JSON.stringify(rapor, null, 2));\n} catch (e) {}\n\nconsole.log(JSON.stringify(rapor));\nreturn [{ json: rapor }];"
+      },
+      "id": "3f1a2c44-1d5e-4b8a-9c21-7e0d6a4b1111",
+      "name": "Rapor",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1248,
+        -144
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Basla": {
+      "main": [
+        [
+          {
+            "node": "Kademe Secimi",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Kademe Secimi": {
+      "main": [
+        [
+          {
+            "node": "Onbellektekileri Atla",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Onbellektekileri Atla": {
+      "main": [
+        [
+          {
+            "node": "Gruplara Bol",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gruplara Bol": {
+      "main": [
+        [
+          {
+            "node": "Bitti",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "GitHub Meta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GitHub Meta": {
+      "main": [
+        [
+          {
+            "node": "Satir Ekle",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Kayip Kaydet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Satir Ekle": {
+      "main": [
+        [
+          {
+            "node": "Gruplara Bol",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Kayip Kaydet": {
+      "main": [
+        [
+          {
+            "node": "Gruplara Bol",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Bitti": {
+      "main": [
+        [
+          {
+            "node": "Rapor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "saveDataSuccessExecution": "none",
+    "saveDataErrorExecution": "all",
+    "saveExecutionProgress": false,
+    "executionTimeout": 18000
+  },
+  "versionId": "5c1aeb94-cf54-4d87-8d77-3130a5c2c747",
+  "meta": {
+    "instanceId": "93ebc8983d621de60e1dc1c75ad65432656d968fa5c8131a635cdcf748f714ac"
+  },
+  "nodeGroups": [],
+  "id": "DS21meta0001",
+  "tags": []
+}

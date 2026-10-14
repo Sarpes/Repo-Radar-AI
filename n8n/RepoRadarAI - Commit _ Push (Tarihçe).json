@@ -1,0 +1,398 @@
+{
+  "name": "RepoRadarAI - Commit / Push (Tarihçe)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks"
+            }
+          ]
+        }
+      },
+      "id": "c0d3f00d-0000-4000-8000-000000000001",
+      "name": "Zamanlayici",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -224,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Turun beynidir: kilidi kontrol eder, kulliyati ve iki durum dosyasini okur,\n// yapilacak islerin listesini kurar. Faz secimi SABIT BIR AYARDAN DEGIL, her\n// reponun kendi kayitli durumundan cikar - bu yuzden ayni workflow hem ilk\n// cekimi hem derinlesmeyi hem de sonsuza kadar tazelemeyi yapar.\nconst fs = require('fs');\nconst DIZIN = '/data/ds21final/tarihce';\nconst GIRDI = '/data/ds21final/input/';\nconst KILIT = DIZIN + '/_kilit.json';\nconst LIMIT = 1100;\nconst TAVAN = 40;\nconst KILIT_DK = 20;\n\ntry { fs.mkdirSync(DIZIN, { recursive: true }); } catch (e) {}\n\n// --- kilit: onceki tur hala kosuyorsa bu turu tamamen atla ---\n// Eski workflow'da 112 mukerrer cekim tam olarak bunun yoklugundan olusmustu.\nif (fs.existsSync(KILIT)) {\n  try {\n    const k = JSON.parse(fs.readFileSync(KILIT, 'utf8'));\n    const yas = (Date.now() - new Date(k.an).getTime()) / 60000;\n    if (yas < KILIT_DK) {\n      console.log('kilit var (' + yas.toFixed(1) + ' dk) - tur atlandi');\n      return [{ json: { atlandi: true, kilit_yasi_dk: Number(yas.toFixed(1)) } }];\n    }\n  } catch (e) {}\n}\n\n// --- kulliyat: diger workflow'larin okudugu AYNI girdi dosyalari ---\nconst repolar = [];\nfor (let i = 1; i <= 5; i++) {\n  const yol = GIRDI + 'repos_meta' + i + '.csv';\n  if (!fs.existsSync(yol)) { continue; }\n  const satirlar = fs.readFileSync(yol, 'utf8').split('\\n');\n  for (let k = 1; k < satirlar.length; k++) {\n    const s = satirlar[k].trim();\n    if (s) { repolar.push(s.split(',')[0]); }\n  }\n}\n\n// --- durum: repo basina SON satir kazanir ---\nfunction durumOku(dosya) {\n  const d = {};\n  const yol = DIZIN + '/' + dosya;\n  if (!fs.existsSync(yol)) { return d; }\n  for (const s of fs.readFileSync(yol, 'utf8').split('\\n')) {\n    if (!s.trim()) { continue; }\n    try { const r = JSON.parse(s); if (r.full_name) { d[r.full_name] = r; } } catch (e) {}\n  }\n  return d;\n}\nconst cD = durumOku('commit_durum.jsonl');\nconst pD = durumOku('push_durum.jsonl');\n\nconst BITTI_C = ['ok', 'bos', 'erisilemez', '304'];\nconst BITTI_P = ['tam', 'api_bitti', 'tavan', 'yok', 'erisilemez', '304'];\n\nconst TAZELEME_GUN = 7;\n\n// AUDIT 2026-09-11 | TAZELEME KOVASI EKLENDI.\n// Bu dosyanin ust yorumu \"ayni workflow ... sonsuza kadar tazelemeyi yapar\"\n// diyordu ama KOD OYLE YAPMIYORDU: bir repo `ok`/`tam` olduktan sonra hicbir\n// kosulda yeniden kuyruga girmiyordu. Yas kontrolu YOKTU. Yani `haftalik.bat`'in\n// \"n8n zaten cekimi zamanliyor\" varsayimi da bosluktaydi - model her hafta\n// yeniden skorlanabiliyordu ama skorladigi veri DONMUSTU.\n// Kodda karsiligi olmayan bir tasarim niyeti, bir niyettir.\nfunction yasGun(iso) {\n  if (!iso) { return 1e9; }\n  const t = new Date(iso).getTime();\n  return isNaN(t) ? 1e9 : (Date.now() - t) / 86400000;\n}\n\nconst C1 = [], C2 = [], C3 = [], P1 = [], P2 = [], P3 = [];\nconst baslangic = new Date().toISOString();\n\nfor (const ad of repolar) {\n  const cUrl = 'https://api.github.com/repos/' + ad + '/stats/contributors';\n\n  // ---- commit ----\n  const c = cD[ad];\n  if (!c) {\n    C1.push({ full_name: ad, is: 'commit', url: cUrl, etag: '', deneme: 0 });\n  } else if (BITTI_C.indexOf(c.durum) < 0 && (c.deneme || 0) < 5) {\n    // 'hesaplaniyor' (202) ya da gecici hata: GitHub istatistigi asenkron\n    // uretiyor, sonraki turda hazir olur.\n    C2.push({ full_name: ad, is: 'commit', url: cUrl, etag: c.etag || '',\n              deneme: c.deneme || 0 });\n  } else if (c.durum !== 'erisilemez' && yasGun(c.cekim) > TAZELEME_GUN) {\n    // TAZELEME. /stats/contributors reponun TUM OMRUNU tek yanitta dondurur,\n    // yani bir istek tam tazeleme demek - artimli birlestirme gerekmiyor.\n    // ETag tasiniyor: degismemisse GitHub 304 doner ve kota sayacina GIRMEZ.\n    // `erisilemez` HARIC: repo GitHub'dan silinmis, haftalik 404 yemek bosuna.\n    C3.push({ full_name: ad, is: 'commit', url: cUrl, etag: c.etag || '',\n              deneme: 0 });\n  }\n\n  // ---- push ----\n  const p = pD[ad];\n  if (!p) {\n    P1.push({ full_name: ad, is: 'push', sayfa: 1, en_erken: 0, olay_top: 0,\n              deneme: 0, etag: '',\n              url: 'https://api.github.com/repos/' + ad + '/activity?per_page=100' });\n  } else if (p.durum === 'derinlesiyor' && p.imlec && (p.sayfa || 1) < TAVAN) {\n    // imlec URL'i GitHub'in Link basligindan geldi. ?page= KULLANILMAZ:\n    // olculdu, sessizce ayni sayfayi donduruyor.\n    P2.push({ full_name: ad, is: 'push', sayfa: (p.sayfa || 1) + 1,\n              en_erken: p.en_erken || 0, olay_top: p.olay || 0,\n              deneme: 0, etag: '', url: p.imlec });\n  } else if (BITTI_P.indexOf(p.durum) < 0 && (p.deneme || 0) < 3) {\n    // hata: ayni URL'i yeniden dene\n    P2.push({ full_name: ad, is: 'push', sayfa: p.sayfa || 1,\n              en_erken: p.en_erken || 0, olay_top: p.olay || 0,\n              deneme: p.deneme || 0, etag: '',\n              url: p.son_url || ('https://api.github.com/repos/' + ad + '/activity?per_page=100') });\n  } else if (p.durum !== 'erisilemez' && yasGun(p.cekim) > TAZELEME_GUN) {\n    // TAZELEME. Yeni olaylar akisin BASINDA durur, yani 1. sayfa yeter.\n    //\n    // 🔑 NUMARA: `en_erken` ILERI TASINIYOR. Durum kurali (asagida :346)\n    //    `enErken <= HEDEF_TS ise durum='tam'` diyor; eski deger zaten bu\n    //    kosulu sagladigi icin repo 1. sayfadan sonra dogrudan `tam`'a doner\n    //    ve TUM SAYFALARI YENIDEN YURUMEZ. en_erken'i 0 verseydik 24.664 repo\n    //    bastan T-365'e kadar yeniden cekilirdi.\n    // `etag1` ile sartli istek: degismemisse 304.\n    // `tavan`daki repolar icin sayfa sayaci da tasiniyor, yoksa 1. sayfadan\n    //    sonra `derinlesiyor`a dusup 40 sayfa yeniden yururlerdi (498 repo).\n    // ⚠️ BILINEN SINIR: bir repo tazeleme araliginda 100'den cok olay aldiysa\n    //    1. sayfa yetmez ve fazlasi kacar. TAZELEME_GUN=7'de bu cok nadir;\n    //    olculdu: repolarin %80,6'si 5 HAFTADA hic push almiyor.\n    P3.push({ full_name: ad, is: 'push',\n              sayfa: (p.durum === 'tavan' ? (p.sayfa || 1) : 1),\n              en_erken: p.en_erken || 0, olay_top: p.olay || 0,\n              deneme: 0, etag: p.etag1 || '',\n              url: 'https://api.github.com/repos/' + ad + '/activity?per_page=100' });\n  }\n}\n\n// --- GENISLIK ONCE: hic dokunulmamislar donusumlu, sonra derinlesme ---\nfunction harmanla(a, b) {\n  const o = [];\n  const n = Math.max(a.length, b.length);\n  for (let i = 0; i < n; i++) {\n    if (i < a.length) { o.push(a[i]); }\n    if (i < b.length) { o.push(b[i]); }\n  }\n  return o;\n}\nconst liste = harmanla(C1, P1).concat(harmanla(C2, P2)).concat(harmanla(C3, P3)).slice(0, LIMIT);\nfor (const x of liste) { x.baslangic = baslangic; }\n\nfs.writeFileSync(DIZIN + '/_baslangic.json', JSON.stringify({\n  an: baslangic, kulliyat: repolar.length,\n  commit_bekleyen: C1.length, commit_tekrar: C2.length, commit_tazeleme: C3.length,\n  push_bekleyen: P1.length, push_derinlesme: P2.length, push_tazeleme: P3.length,\n  tazeleme_gun: TAZELEME_GUN,\n  bu_kosuda: liste.length\n}, null, 2));\n\nif (!liste.length) {\n  console.log('yapilacak is yok - her sey guncel (tazeleme esigi ' + TAZELEME_GUN + ' gun)');\n  return [{ json: { bitti: true, kulliyat: repolar.length } }];\n}\n\nfs.writeFileSync(KILIT, JSON.stringify({ an: baslangic, is: liste.length }));\nconsole.log('kulliyat=' + repolar.length + ' C1=' + C1.length + ' P1=' + P1.length +\n            ' C2=' + C2.length + ' P2=' + P2.length +\n            ' C3=' + C3.length + ' P3=' + P3.length + ' bu_kosuda=' + liste.length);\nreturn liste.map(function (x) { return { json: x }; });"
+      },
+      "id": "c0d3f00d-0000-4000-8000-000000000002",
+      "name": "Is Listesi",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "c0d3f00d-0000-4000-8000-000000000003",
+      "name": "Gruplara Bol",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        240,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "expression",
+        "numberOutputs": 3,
+        "output": "={{ (Date.now() - new Date($json.baslangic).getTime()) > 720000 ? 2 : ($json.is === 'commit' ? 0 : 1) }}"
+      },
+      "id": "c0d3f00d-0000-4000-8000-000000000004",
+      "name": "Yol Ayrimi",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        480,
+        128
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.url }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/vnd.github+json"
+            },
+            {
+              "name": "X-GitHub-Api-Version",
+              "value": "2022-11-28"
+            },
+            {
+              "name": "If-None-Match",
+              "value": "={{ $json.etag || '\"yok\"' }}"
+            }
+          ]
+        },
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 800
+            }
+          },
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "timeout": 45000
+        }
+      },
+      "id": "c0d3f00d-0000-4000-8000-000000000005",
+      "name": "Commit Iste",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        752,
+        32
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "vDN3h67wrzP8yMqQ",
+          "name": "GitHub PAT"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.url }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/vnd.github+json"
+            },
+            {
+              "name": "X-GitHub-Api-Version",
+              "value": "2022-11-28"
+            },
+            {
+              "name": "If-None-Match",
+              "value": "={{ $json.etag || '\"yok\"' }}"
+            }
+          ]
+        },
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 800
+            }
+          },
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "timeout": 45000
+        }
+      },
+      "id": "c0d3f00d-0000-4000-8000-000000000006",
+      "name": "Push Iste",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        752,
+        208
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "vDN3h67wrzP8yMqQ",
+          "name": "GitHub PAT"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Iki ucun TEK yazicisi. batchSize 1 oldugu icin bu yanit hangi repoya ait\n// sorusunun cevabi belirsizlik tasimaz: dongunun o anki item'i.\nconst fs = require('fs');\nconst DIZIN = '/data/ds21final/tarihce';\nconst TAVAN = 40;\nconst HEDEF_TS = Math.floor(new Date('2025-03-11T00:00:00Z').getTime() / 1000);\n\nconst girdi = $('Gruplara Bol').first().json;\nconst j = $input.first().json || {};\nconst kod = j.statusCode || 0;\nconst bas = j.headers || {};\nconst govde = j.body;\nconst an = new Date().toISOString();\nconst ad = girdi.full_name;\n\n// ---------------------------------------------------------------- COMMIT\nif (girdi.is === 'commit') {\n  const etag = bas.etag || bas.ETag || girdi.etag || '';\n  let durum = 'hata';\n  let hafta = 0;\n\n  if (kod === 304) {\n    durum = '304';                       // degismemis - kotadan dusmedi\n  } else if (kod === 202) {\n    durum = 'hesaplaniyor';              // GitHub uretiyor, sonraki turda tekrar\n  } else if (kod === 404 || kod === 451) {\n    durum = 'erisilemez';                // repo yok / engelli\n  } else if (kod === 200 && Array.isArray(govde) && govde.length) {\n    // TIDY SEMA fetch_commit_history.py ile BIREBIR AYNI olmak zorunda:\n    // yalnizca c > 0 haftalar sayilir, sifir haftalar YAZILMAZ (ozellik\n    // kurulumunda reindex ile geri gelirler).\n    const h = {};\n    for (const katkici of govde) {\n      for (const w of (katkici.weeks || [])) {\n        if ((w.c || 0) > 0) {\n          if (!h[w.w]) { h[w.w] = [0, 0]; }\n          h[w.w][0] += w.c;              // o haftaki commit toplami\n          h[w.w][1] += 1;                // o hafta aktif katkici sayisi\n        }\n      }\n    }\n    const ws = Object.keys(h).map(Number).sort(function (a, b) { return a - b; });\n    hafta = ws.length;\n    durum = ws.length ? 'ok' : 'bos';\n    if (ws.length) {\n      fs.appendFileSync(DIZIN + '/commit_weeks.jsonl', JSON.stringify({\n        full_name: ad, cekilme: an, status: 'ok', hafta_sayisi: ws.length,\n        haftalar: ws.map(function (w) { return [w, h[w][0], h[w][1]]; })\n      }) + '\\n', 'utf8');\n    }\n  } else if (kod === 200) {\n    durum = 'bos';                       // 200 + bos dizi = repo gercekten bos\n  }\n\n  const tekrar = (durum === 'hesaplaniyor' || durum === 'hata');\n  fs.appendFileSync(DIZIN + '/commit_durum.jsonl', JSON.stringify({\n    full_name: ad, durum: durum, etag: etag, hafta: hafta,\n    deneme: (girdi.deneme || 0) + (tekrar ? 1 : 0), cekim: an\n  }) + '\\n', 'utf8');\n\n  return [{ json: { full_name: ad, is: 'commit', durum: durum, hafta: hafta,\n                    kota: bas['x-ratelimit-remaining'] || null } }];\n}\n\n// ---------------------------------------------------------------- PUSH\nlet durum = 'hata';\nlet olayS = 0;\nlet enErken = girdi.en_erken || 0;\nlet imlec = null;\n// ETag yalnizca 1. sayfa icin anlamli: ileride tazeleme o sayfaya bakacak.\nconst etag1 = (girdi.sayfa === 1) ? (bas.etag || bas.ETag || '') : (girdi.etag || '');\n\nif (kod === 304) {\n  durum = '304';\n} else if (kod === 404 || kod === 451) {\n  durum = 'erisilemez';\n} else if (kod === 200 && Array.isArray(govde)) {\n  // ---- SIRALAMAYA GUVENME ----\n  // Eski workflow \"id'ler kesin azalan\" varsayip ilk eski id'de break ediyordu.\n  // Olculdu: kayitlarin %3,37'sinde id'ler azalan DEGIL, yani o break yeni\n  // olaylari sessizce atlayabiliyordu. Burada sayfanin TAMAMI aliniyor ve\n  // mukerrerler Python'da olay id'sine gore temizleniyor.\n  const yeni = [];\n  let mn = 0;\n  for (const e of govde) {\n    const ts = Math.floor(new Date(e.timestamp).getTime() / 1000);\n    if (!mn || ts < mn) { mn = ts; }\n    yeni.push([e.id, ts, e.activity_type, e.ref || '',\n               (e.actor && e.actor.login) ? e.actor.login : '']);\n  }\n  olayS = yeni.length;\n  if (yeni.length) {\n    fs.appendFileSync(DIZIN + '/push_events.jsonl', JSON.stringify({\n      full_name: ad, cekilme: an, sayfa: girdi.sayfa, olay: yeni\n    }) + '\\n', 'utf8');\n    if (!enErken || mn < enErken) { enErken = mn; }\n  }\n\n  // Sonraki sayfa YALNIZCA Link basligindan. ?page= olculdu: yok sayiliyor.\n  const lk = bas.link || bas.Link || '';\n  const m = lk.match(/<([^>]+)>;\\s*rel=\"next\"/);\n\n  if (!govde.length) {\n    durum = 'yok';                       // hic aktivite kaydi yok\n  } else if (enErken && enErken <= HEDEF_TS) {\n    durum = 'tam';                       // hedef derinlige ULASTI\n  } else if (govde.length < 100 || !m) {\n    durum = 'api_bitti';                 // GitHub'da daha fazlasi YOK\n  } else if (girdi.sayfa >= TAVAN) {\n    durum = 'tavan';                     // biz durduk - pa_kesik bayragi\n  } else {\n    durum = 'derinlesiyor';\n    imlec = m[1];\n  }\n}\n\nfs.appendFileSync(DIZIN + '/push_durum.jsonl', JSON.stringify({\n  full_name: ad, durum: durum, imlec: imlec, en_erken: enErken,\n  sayfa: girdi.sayfa, etag1: etag1, olay: (girdi.olay_top || 0) + olayS,\n  son_url: girdi.url, deneme: (girdi.deneme || 0) + (durum === 'hata' ? 1 : 0),\n  cekim: an\n}) + '\\n', 'utf8');\n\nreturn [{ json: { full_name: ad, is: 'push', durum: durum, sayfa: girdi.sayfa,\n                  olay: olayS, kota: bas['x-ratelimit-remaining'] || null } }];"
+      },
+      "id": "c0d3f00d-0000-4000-8000-000000000007",
+      "name": "Kaydet",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1024,
+        144
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// HTTP dugumunun hata dali: ag seviyesi arizalar (timeout, socket hang up).\n// Basarisiz bir istek de MUTLAKA durum satiri yazmali, yoksa repo \"hic\n// denenmemis\" gorunur ve is listesi hep onu one koyar - eski workflow'da\n// 404'ler tam bunu yapiyordu.\nconst fs = require('fs');\nconst DIZIN = '/data/ds21final/tarihce';\nconst girdi = $('Gruplara Bol').first().json;\nconst j = $input.first().json || {};\nconst an = new Date().toISOString();\nconst mesaj = (j.error && j.error.message) ? String(j.error.message).slice(0, 80)\n                                           : String(j.statusCode || 'bilinmiyor');\n\nif (girdi.is === 'commit') {\n  fs.appendFileSync(DIZIN + '/commit_durum.jsonl', JSON.stringify({\n    full_name: girdi.full_name, durum: 'hata', etag: girdi.etag || '', hafta: 0,\n    deneme: (girdi.deneme || 0) + 1, hata: mesaj, cekim: an\n  }) + '\\n', 'utf8');\n} else {\n  fs.appendFileSync(DIZIN + '/push_durum.jsonl', JSON.stringify({\n    full_name: girdi.full_name, durum: 'hata', imlec: null,\n    en_erken: girdi.en_erken || 0, sayfa: girdi.sayfa || 1, etag1: girdi.etag || '',\n    olay: girdi.olay_top || 0, son_url: girdi.url,\n    deneme: (girdi.deneme || 0) + 1, hata: mesaj, cekim: an\n  }) + '\\n', 'utf8');\n}\nreturn [{ json: { full_name: girdi.full_name, is: girdi.is, durum: 'hata' } }];"
+      },
+      "id": "c0d3f00d-0000-4000-8000-000000000008",
+      "name": "Hata Kaydet",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1024,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Sure siniri asildi. Bu item HTTP'ye HIC gitmez; bir sonraki turda yeniden\n// listeye girer. Sayi siniri yerine ZAMAN siniri kullanmanin sebebi: dis\n// gecikme degistiginde sabit bir istek sayisi anlamini yitiriyor ve tur bir\n// sonraki tetiklemeye tasiyor (eski workflow'da 26,5 dakikalik bir kosu\n// tam bunu yapmisti).\nreturn [{ json: { full_name: $json.full_name, is: $json.is, durum: 'sure_doldu' } }];"
+      },
+      "id": "c0d3f00d-0000-4000-8000-000000000009",
+      "name": "Atla",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1024,
+        480
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "c0d3f00d-0000-4000-8000-000000000010",
+      "name": "Bitti",
+      "type": "n8n-nodes-base.limit",
+      "typeVersion": 1,
+      "position": [
+        480,
+        -176
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Diskten YENIDEN hesaplanir, tur boyunca tasinan sayaclardan degil: kosu\n// zaman asimiyla kesilse bile diskteki sayilar dogrudur.\nconst fs = require('fs');\nconst DIZIN = '/data/ds21final/tarihce';\n\nfunction ozet(dosya) {\n  const son = {};\n  let satir = 0;\n  const yol = DIZIN + '/' + dosya;\n  if (fs.existsSync(yol)) {\n    for (const s of fs.readFileSync(yol, 'utf8').split('\\n')) {\n      if (!s.trim()) { continue; }\n      satir++;\n      try { const r = JSON.parse(s); if (r.full_name) { son[r.full_name] = r; } } catch (e) {}\n    }\n  }\n  const sayac = {};\n  for (const ad in son) { const d = son[ad].durum; sayac[d] = (sayac[d] || 0) + 1; }\n  return { satir: satir, repo: Object.keys(son).length, durumlar: sayac };\n}\n\nconst bas = JSON.parse(fs.readFileSync(DIZIN + '/_baslangic.json', 'utf8'));\nconst rapor = {\n  an: new Date().toISOString(),\n  kulliyat: bas.kulliyat,\n  bu_kosuda: bas.bu_kosuda,\n  kosu_saniye: Math.round((Date.now() - new Date(bas.an).getTime()) / 1000),\n  commit: ozet('commit_durum.jsonl'),\n  push: ozet('push_durum.jsonl')\n};\nfs.writeFileSync(DIZIN + '/_rapor.json', JSON.stringify(rapor, null, 2));\ntry { fs.unlinkSync(DIZIN + '/_kilit.json'); } catch (e) {}   // kilidi birak\nconsole.log(JSON.stringify(rapor));\nreturn [{ json: rapor }];"
+      },
+      "id": "c0d3f00d-0000-4000-8000-000000000011",
+      "name": "Rapor",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        752,
+        -176
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Zamanlayici": {
+      "main": [
+        [
+          {
+            "node": "Is Listesi",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Listesi": {
+      "main": [
+        [
+          {
+            "node": "Gruplara Bol",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gruplara Bol": {
+      "main": [
+        [
+          {
+            "node": "Bitti",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Yol Ayrimi",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Bitti": {
+      "main": [
+        [
+          {
+            "node": "Rapor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Yol Ayrimi": {
+      "main": [
+        [
+          {
+            "node": "Commit Iste",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Push Iste",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Atla",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Commit Iste": {
+      "main": [
+        [
+          {
+            "node": "Kaydet",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Hata Kaydet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Push Iste": {
+      "main": [
+        [
+          {
+            "node": "Kaydet",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Hata Kaydet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Kaydet": {
+      "main": [
+        [
+          {
+            "node": "Gruplara Bol",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Hata Kaydet": {
+      "main": [
+        [
+          {
+            "node": "Gruplara Bol",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Atla": {
+      "main": [
+        [
+          {
+            "node": "Gruplara Bol",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "saveManualExecutions": true,
+    "executionTimeout": 840
+  },
+  "versionId": "b381edf8-7fb3-4cd4-b6bf-551dd9a583fe",
+  "meta": {
+    "instanceId": "93ebc8983d621de60e1dc1c75ad65432656d968fa5c8131a635cdcf748f714ac"
+  },
+  "nodeGroups": [],
+  "id": "DS21tarihce0001",
+  "tags": []
+}

@@ -1,0 +1,192 @@
+{
+  "name": "RepoRadarAI - Anlamsal Arama",
+  "nodes": [
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "sorgu"
+            },
+            {
+              "name": "dil"
+            },
+            {
+              "name": "rozet"
+            },
+            {
+              "name": "adet"
+            },
+            {
+              "name": "koklu"
+            }
+          ]
+        }
+      },
+      "id": "9e305cc9-0705-4968-9b7d-74dc45f26cc4",
+      "name": "Arac Cagrildi",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "\n// Sorguya Qwen3'un talimat onekini ekle.\n//\n// Neden burada ve neden sabit: onek olcumun parcasi. eval_rag.py bu metinle\n// olctu (r@5 0,636); n8n baska bir metin gonderirse sunumda soyledigimiz\n// sayi ile sistemin yaptigi is ayrisir. Degistirilecekse IKISI BIRDEN.\nconst GOREV = \"Given a developer's problem statement, retrieve the GitHub repository that solves it\";\n\nconst sorgu = String($json.sorgu || '').trim();\n\n// Bos sorgu bir is sonucu degil, bozuk bir cagri: ajan zorunlu alani\n// doldurmamis demektir. Bu yuzden {ok:false} donmuyoruz, ATIYORUZ -\n// hata ajanin gozlemine dusuyor ve ajan yeniden deneyebiliyor.\nif (!sorgu) {\n  throw new Error(\"repo_ara: 'sorgu' alani bos geldi. Kullanicinin aradigi islevi yaz.\");\n}\n\nreturn [{ json: {\n  sorgu: sorgu,\n  gomme_metni: \"Instruct: \" + GOREV + \"\\nQuery:\" + sorgu\n} }];\n"
+      },
+      "id": "c05fd644-1f54-41ea-9a68-a6af56a59712",
+      "name": "Sorguyu Hazirla",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:11434/api/embed",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: 'qwen3-embedding:8b', input: $json.gomme_metni, keep_alive: '30m', options: { num_gpu: 0 } }) }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "aa21f9ce-f89e-4bee-abfe-08628929430d",
+      "name": "Ollama Gomme",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        448,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "\n// Iki is: (1) Ollama vektorunu pgvector bicimine cevir, (2) filtreleri\n// DOGRULAYIP sorgu metnini kur.\n//\n// SQL neden burada kuruluyor: vektor 4096 eleman ve icinde virgul var;\n// n8n'in queryReplacement'i virgulden boldugu icin vektorun yanina ikinci\n// bir parametre konamiyor. Filtreler bu yuzden metne gomuluyor - ama ASLA\n// dogrulanmadan: dil beyaz liste regexinden geciyor (tirnak karakteri\n// gecemez) ve tirnaklari ikileniyor, rozet ise KAPALI listeden secilyor.\n// Vektor tek parametre olarak $1'de kaliyor.\nconst BOYUT = 4096;\n// 2026-09-11 | 15 -> 20. Sarp sorgu basina 10'lu liste istedi; ajan alakasiz\n// olanlari eledigi icin 10'a ulasmak adina PAY gerekiyor.\n// 2026-09-12 | `adet` ile AZALTILABILIR hale geldi. Sebep olculdu: yigin\n// modunda uc arama x 20 satir = 60 satir (~4.200 token) ve model o yiginin\n// icinde plani kaybediyordu. Yigin modunda bilesen basina 8 istenir.\n// Tavan yine 20: ajan daha fazlasini isterse kirpilir, daha azini isterse\n// saygi gosterilir, sacma bir deger gelirse varsayilana duser.\n// 2026-09-12 | 20 -> 12. `aciklama` alani eklenince satir basina ~140\n// karakter daha gidiyor; 20 satir modeli boguyor ve on madde yerine\n// BES madde yaziyordu (olculdu: 61633, 61636, 61644, dogrulama kosusu).\n// 12 = istenen 10 madde + 2 eleme payi.\n// 2026-09-12 | 12 -> 10. SECIM ISI MODELDEN ALINDI. Istemde 'TAM 10 al'\n// kurali ALTI yerde yaziliydi ve model yine bes madde yaziyordu\n// (olculdu: uc soru, ucunde de tam 5). Elemeyi model yapmayinca is\n// 'gelenin hepsini yaz'a donuyor - bu ise tutuyor.\nconst VARSAYILAN = 10;\nconst istenen = parseInt($('Arac Cagrildi').first().json.adet, 10);\nconst LIMIT = (Number.isFinite(istenen) && istenen >= 1)\n  ? Math.min(istenen, VARSAYILAN)\n  : VARSAYILAN;\n\nconst yanit = $input.first().json;\nconst v = (yanit.embeddings && yanit.embeddings[0]) || yanit.embedding;\n\nif (!Array.isArray(v)) {\n  throw new Error('Ollama vektor dondurmedi: ' + JSON.stringify(yanit).slice(0, 200));\n}\n\n// BOYUT KAPISI. Yanlis gomme modeli kullanilirsa Postgres zaten hata verir,\n// ama mesaji (\"expected 4096 dimensions, not 1024\") n8n loglarinda kaybolur.\nif (v.length !== BOYUT) {\n  throw new Error('Vektor boyutu ' + v.length + ', beklenen ' + BOYUT +\n                  '. Gomme modeli indeksi kuran modelle ayni mi?');\n}\n\n// --- FILTRELER ---------------------------------------------------------\nconst giris = $('Arac Cagrildi').first().json;\nconst kosullar = [];\n\n// 2026-09-12 | \"HEPSI\" DEMENIN ON YOLU. Model bu alana \"Heps\", \"HEPSI\",\n// \"Hepsi\", \"hepsı\", \"all\" yaziyor; kati esitlik yalnizca birini kabul edip\n// digerlerinde CAGRIYI HATAYLA dusuruyordu (calisma 61638: dil=\"Heps\",\n// kullaniciya \"Heps ifadesi kullanilamaz\" diye bir hata metni gitti).\n// Ayni tuzak sayim aracinda da cikmisti; cozum orada da kodda idi.\nfunction hepsiMi(x) {\n  const t = String(x == null ? '' : x).trim().toUpperCase();\n  return t === '' || t.startsWith('HEPS') || t === 'ALL' || t === 'TUMU';\n}\n\nconst dil = String(giris.dil || '').trim();\nif (!hepsiMi(dil)) {\n  // Beyaz liste: tirnak, noktali virgul, bosluk disi hicbir isaret gecemez.\n  if (!/^[A-Za-z0-9+#.\\- ]{1,30}$/.test(dil)) {\n    throw new Error(\"repo_ara: 'dil' gecersiz: \" + dil.slice(0, 40));\n  }\n  kosullar.push(\"r.language ILIKE '\" + dil.replace(/'/g, \"''\") + \"'\");\n}\n\nconst ROZETLER = { GREEN: 'GREEN', AMBER: 'AMBER', RED: 'RED',\n                   YESIL: 'GREEN', SARI: 'AMBER', KIRMIZI: 'RED' };\nconst rozetHam = String(giris.rozet || '').trim().toUpperCase();\nif (!hepsiMi(rozetHam)) {\n  const r = ROZETLER[rozetHam];\n  if (!r) {\n    throw new Error(\"repo_ara: 'rozet' GREEN/AMBER/RED olmali, gelen: \" +\n                    rozetHam.slice(0, 20));\n  }\n  kosullar.push(\"r.badge_today = '\" + r + \"'\");\n}\n\n// OLGUNLUK (12.09). is_mature = DS21_Final_v2.py STEP 13.6 kurali:\n// ilk-son commit arasi >= 52 hafta VE >= 50 commit VE bir haftada >= 3 katkici.\n// Gecmisi olmayan repo olgun SAYILMAZ; NULL'lar da disarida kalir.\n// Rozet gibi KAPALI LISTE: ajan ne yazarsa yazsin SQL'e yalnizca bu iki\n// ifadeden biri girer.\nconst KOKLU = { EVET: 'r.is_mature IS TRUE', HAYIR: 'r.is_mature IS NOT TRUE' };\nconst kokluHam = String(giris.koklu || '').trim().toUpperCase();\nif (!hepsiMi(kokluHam)) {\n  const k = KOKLU[kokluHam];\n  if (!k) {\n    throw new Error(\"repo_ara: 'koklu' EVET/HAYIR/HEPSI olmali, gelen: \" +\n                    kokluHam.slice(0, 20));\n  }\n  kosullar.push(k);\n}\n\nconst filtre = kosullar.length ? ('\\n  AND ' + kosullar.join('\\n  AND ')) : '';\n\nconst ROZET_IFADE =\n  \"CASE r.badge_today WHEN 'GREEN' THEN '\\ud83d\\udfe2' \" +\n  \"WHEN 'AMBER' THEN '\\ud83d\\udfe1' ELSE '\\ud83d\\udd34' END\";\n\n// IKI SIRALAMA, IKI AMAC:\n//   ic sorgu  -> ORDER BY embedding <=> $1  : hangi 15 repo ILGILI\n//   dis sorgu -> ORDER BY aktiflik_yuzde    : hangi SIRAYLA gosterilecek\n// Gosterim sirasi modele birakilmiyor; modelden siralama istemek bu\n// oturumda uc kez basarisiz oldu.\nconst sql =\n  \"SELECT * FROM (\\n\" +\n  \"SELECT r.full_name,\\n\" +\n  \"       ROUND(MAX(1 - (v.embedding <=> $1::vector))::numeric, 4) AS benzerlik,\\n\" +\n  \"       \" + ROZET_IFADE + \" AS rozet,\\n\" +\n  \"       '**[' || r.full_name || '](https://github.com/' || r.full_name || ')** '\\n\" +\n  \"         || \" + ROZET_IFADE + \"\\n\" +\n  \"         || ' \\u00b7 %' || ROUND(r.p_active_today * 100)\\n\" +\n  \"         || ' \\u00b7 \\u2b50 ' || replace(to_char(stars, 'FM999,999,999'), ',', '.')\\n\" +\n  \"         || COALESCE(' \\u00b7 ' || language, '')\\n\" +\n  \"         AS satir,\\n\" +\n  \"       ROUND(r.p_active_today * 100) AS aktiflik_yuzde,\\n\" +\n  \"       r.is_mature, r.ai_category,\\n\" +\n  // 2026-09-12 | ACIKLAMA ALANI. Arac bugune kadar reponun NE YAPTIGINI hic\n  // gondermiyordu: modele yalnizca ad, rozet, yildiz ve dil gidiyordu. Her\n  // gerekce repo ADINDAN uyduruluyordu (61625: on maddenin onunde ayni cumle\n  // + verimizde hic gecmeyen \"guvenlik\" iddiasi. 61627: kurulum adimlari\n  // uyduruldu, oysa repo Docker ile kuruluyor).\n  // doc_primary bicimi: \"<full_name> <aciklama> Topics: ...\". Basindaki adi\n  // ve Topics kuyrugunu kesiyoruz. Ters bolu kullanmamak icin chr() ile.\n  // NOT: burada regexp_replace KULLANMA. Desendeki $ isareti n8n Postgres\n  // dugumunun $1 parametre yer tutucusuyla cakisiyor ve sorgu\n  // \"Syntax error near VERI_YOK\" ile dusuyor (olculdu: 61705, 61707, 61708).\n  \"       left(trim(split_part(replace(replace(substr(r.doc_primary,\\n\" +\n  \"            length(r.full_name)+2), chr(10), ' '), chr(13), ' '),\" +\n  \"            'Topics:', 1)), 150) AS aciklama_en\\n\" +\n  \"FROM (\\n\" +\n  \"    SELECT full_name, embedding FROM repos WHERE embedding IS NOT NULL\\n\" +\n  \"    UNION ALL\\n\" +\n  \"    SELECT full_name, embedding FROM repo_govde\\n\" +\n  \") v\\n\" +\n  \"JOIN repos r USING (full_name)\\n\" +\n  \"WHERE r.badge_today <> 'VERI_YOK'\" + filtre + \"\\n\" +\n  \"GROUP BY r.full_name\\n\" +\n  \"ORDER BY MAX(1 - (v.embedding <=> $1::vector)) DESC\\n\" +\n  \"LIMIT \" + LIMIT + \"\\n\" +\n  \") q\\n\" +\n  \"ORDER BY aktiflik_yuzde DESC NULLS LAST\";\n\nreturn [{ json: {\n  vektor: '[' + v.join(',') + ']',\n  sql: sql,\n  uygulanan_filtre: kosullar.length ? kosullar.join(' AND ') : 'yok',\n  sorgu: $('Sorguyu Hazirla').first().json.sorgu\n} }];\n"
+      },
+      "id": "ca933425-15ec-4de6-8331-d60f11b2c3ef",
+      "name": "Vektoru Hazirla",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        672,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "{{ $json.sql }}",
+        "options": {
+          "queryReplacement": "={{ $json.vektor }}"
+        }
+      },
+      "id": "8d5d37a1-689f-4460-b618-99376db1de6d",
+      "name": "pgvector Ara",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        880,
+        0
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "ds21pgvector001",
+          "name": "DS21 pgvector"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "\n// SOZLESME DUGUMU - bu workflow'un ciktisi budur.\n// Ajan bu satirlari okuyup cevabi yazacak, o yuzden:\n//   - vektor ve ham float gonderilmiyor (baglam israfi)\n//   - alan adlari kendini anlatiyor\n//   - 0 sonuc bir HATA degil, gecerli bir cevap\nconst satirlar = $input.all();\n\nif (satirlar.length === 0) {\n  return [{ json: { ok: true, sonuc_sayisi: 0, sonuclar: [],\n                    not: 'Bu tarife uyan repo bulunamadi.' } }];\n}\n\n// ⚠️ link / rozet / yildiz / yuzde BILEREK GONDERILMIYOR.\n// Onlar ayrica gonderilirken model `satir`i kopyalamak yerine parcalardan\n// yeniden kuruyor ve kuyrugu (\"· %18 · ⭐ 2.194\") dusuruyordu (calisma 57682).\n// Hepsi zaten `satir` icinde. full_name yalnizca kapanis cumlesi icin duruyor.\n// Siralama SQL'de yapiliyor (dis ORDER BY aktiflik_yuzde DESC).\n// Burada TEKRAR siralamiyoruz: ayni kurali iki yerde tutmak, birini\n// degistirip digerini unutmanin kisa yoludur.\n\n// `no`: ajanin KAC madde yazdigini takip edebilmesi icin. Olculdu (11.09):\n// arac her seferinde 20 satir donduruyor ama ajan ortalama 7 madde yaziyordu;\n// sayilabilir bir isaret olmadan \"10 yaz\" talimati tutmuyor.\n// `bilesen`: bu satirin HANGI aramadan geldigi. Yigin modunda ajan uc ayri\n// arama yapiyor ve sonuclari tek havuzda birlestirip son aramanin listesini\n// yaziyordu (olculdu: 61170, 61176). Etiket satirin uzerinde olunca gruplama\n// hatirlamaya degil VERIYE dayaniyor.\n// ---- ZAYIF ESLESME KAPISI (13.09, DS_BULGULAR B24) ----------------------\n// SQL her zaman en yakin 10 repoyu dondurur - \"Istanbul-Berlin ucuz ucak\n// bileti\" icin de. Olculdu (sunum/kosum/prob_negatif_kontrol.py, 354 sinav\n// sorgusu + 12 konu disi sorgu): en iyi benzerlik 0.58 altindaysa 12 konu\n// disi sorgunun 11'i yakalaniyor, sinav sorgularinin yalniz 3'u kesiliyor ve\n// o 3'unde dogru repo zaten ilk 10'da degildi.\n// Satirlar AKTIFLIGE gore sirali geldigi icin en iyi benzerlik ilk satir\n// DEGIL, hepsinin en buyugu.\nconst ESIK = 0.58;\nconst enIyi = Math.max(...satirlar.map(x => Number(x.json.benzerlik) || 0));\nif (enIyi < ESIK) {\n  return [{ json: { ok: true, sonuc_sayisi: 0, sonuclar: [], zayif_eslesme: true,\n                    en_yuksek_benzerlik: enIyi,\n                    not: 'Arsivde bu tarife yeterince yakin repo yok. Bulunamadigini ' +\n                         'soyle; liste, uyari satiri ve oneri YAZMA.' } }];\n}\n\nconst BILESEN = $('Sorguyu Hazirla').first().json.sorgu;\n\nreturn satirlar.map((x, i) => ({ json: {\n  no:          i + 1,\n  bilesen:     BILESEN,\n  satir:       x.json.satir,\n  full_name:   x.json.full_name,\n  koklu_proje: x.json.is_mature,\n  kategori:    x.json.ai_category,\n  benzerlik:   x.json.benzerlik,\n  // GEREKCENIN DAYANAGI: reponun GitHub'daki kendi tanimi.\n  // Alan adinda 'en' var: model bunun INGILIZCE oldugunu ve CEVIRMESI\n  // gerektigini alan adindan da gorsun. Olculdu: sade 'aciklama' adiyla\n  // Ingilizce metni oldugu gibi yapistirdi.\n  aciklama_en: x.json.aciklama_en || ''\n} }));\n"
+      },
+      "id": "9a46b3a7-4387-4553-95d0-96cc801b9052",
+      "name": "Return",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1104,
+        0
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Arac Cagrildi": {
+      "main": [
+        [
+          {
+            "node": "Sorguyu Hazirla",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sorguyu Hazirla": {
+      "main": [
+        [
+          {
+            "node": "Ollama Gomme",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama Gomme": {
+      "main": [
+        [
+          {
+            "node": "Vektoru Hazirla",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Vektoru Hazirla": {
+      "main": [
+        [
+          {
+            "node": "pgvector Ara",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "pgvector Ara": {
+      "main": [
+        [
+          {
+            "node": "Return",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "saveDataSuccessExecution": "all",
+    "saveDataErrorExecution": "all"
+  },
+  "versionId": "e41293de-a4dc-4006-a526-503fc4b1f214",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "93ebc8983d621de60e1dc1c75ad65432656d968fa5c8131a635cdcf748f714ac"
+  },
+  "nodeGroups": [],
+  "id": "DS21search0001",
+  "tags": []
+}

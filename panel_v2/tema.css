@@ -1,0 +1,228 @@
+/* tema.css | RepoRadarAI panel, light "technical report" theme.
+   One accent (--vurgu) shared with the matplotlib figures (eda_figures.py S1), so a chart
+   and the text beside it speak the same colour. Badge colours carry meaning and never
+   decorate. The chapter strip is drawn as a commit-activity grid: visited chapters are
+   filled, the current one is solid, the rest are empty. */
+@import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=Instrument+Sans:wght@400..700&display=swap');
+
+:root {
+  --kagit: #f4f6f4;        /* page = figure surface */
+  --kagit-2: #eaeeea;      /* sidebar */
+  --sayfa: #ffffff;        /* the few raised surfaces */
+  --murekkep: #1b2420;
+  --murekkep-2: #4d5852;
+  --murekkep-3: #7b857f;
+  --cizgi: #d5dbd6;
+  --vurgu: #2a78d6;
+  --vurgu-acik: #a9c8ee;
+  --vurgu-zemin: rgba(42, 120, 214, .07);
+  --amber: #a86b00;
+  --amber-zemin: rgba(250, 178, 25, .12);
+  --yesil: #0a7d0a;
+  --baslik: "Bricolage Grotesque", "Segoe UI", sans-serif;
+  --govde: "Instrument Sans", "Segoe UI", sans-serif;
+}
+
+/* ---------- page ---------- */
+.stApp { background: var(--kagit); color: var(--murekkep); }
+/* Streamlit sets its own font on these with higher specificity, hence !important.
+   Spans are left alone: the icon font (Material Symbols) lives on spans. */
+.stApp, .stApp p, .stApp li, .stApp td, .stApp th, .stApp label, .stApp button, .stApp input, .stApp div {
+  font-family: var(--govde) !important;
+}
+.block-container { max-width: 1180px; padding-top: 3rem !important; padding-bottom: 4rem; }
+[data-testid="stHeader"] { background: var(--kagit) !important; }
+[data-testid="stDecoration"], [data-testid="stToolbar"] { background: transparent !important; }
+[data-testid="stStatusWidget"] { visibility: hidden; }
+[data-testid="stAppDeployButton"], [data-testid="stMainMenu"] { display: none !important; }
+
+.stApp h1, .stApp h2, .stApp h3, .stApp h4, .stApp h1 *, .stApp h2 *, .stApp h3 *, .stApp h4 * {
+  font-family: var(--baslik) !important; color: var(--murekkep); letter-spacing: -.015em; }
+h2 { font-size: 2.35rem !important; font-weight: 700 !important; line-height: 1.1 !important; margin: .1rem 0 .6rem !important; }
+h3 { margin-top: 1.6rem !important; }
+p, li { color: var(--murekkep); line-height: 1.6; }
+code { color: var(--murekkep); background: var(--kagit-2); border-radius: 4px; padding: .05rem .3rem; font-size: .88em; }
+a:focus-visible, [role="tab"]:focus-visible { outline: 2px solid var(--vurgu); outline-offset: 2px; }
+hr { border-color: var(--cizgi); }
+
+/* ---------- chapter strip: a commit-activity grid ---------- */
+.journey { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 6px; margin: 0 0 2.2rem; }
+.journey-line { display: none; }
+.journey-step { font-size: .78rem; color: var(--murekkep-3); font-variant-numeric: tabular-nums; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis; }
+.journey-step::before { content: ""; display: block; height: 14px; border-radius: 3px; margin-bottom: .4rem;
+  background: var(--cizgi); }
+.journey-step span { margin-left: .2rem; }
+.journey-step.active::before { background: var(--vurgu-acik); }
+.journey-step.active { color: var(--murekkep-2); }
+/* the current chapter = the last filled cell */
+.journey-step.active:has(+ .journey-line + .journey-step:not(.active)),
+.journey-step.active:last-child { color: var(--murekkep); font-weight: 650; }
+.journey-step.active:has(+ .journey-line + .journey-step:not(.active))::before,
+.journey-step.active:last-child::before { background: var(--vurgu); }
+
+.kicker { font-family: var(--baslik); color: var(--vurgu); font-weight: 650; font-size: 1rem; font-variant-numeric: tabular-nums; }
+
+/* ---------- chapter 01 ---------- */
+.hero { margin: 1.4rem 0 1.2rem; }
+.hero h1 { font-size: 3.3rem; font-weight: 800; line-height: 1; margin: 0 0 .8rem; letter-spacing: -.03em; }
+.hero p { font-size: 1.16rem; color: var(--murekkep-2); max-width: 62ch; margin: 0; line-height: 1.65; }
+
+/* ---------- section heading inside a chapter ---------- */
+.figure-header { margin: 1.6rem 0 .8rem; }
+.figure-eyebrow { color: var(--vurgu); font-size: .78rem; font-weight: 650; letter-spacing: .03em; }
+.figure-title { font-family: var(--baslik); font-size: 1.5rem; font-weight: 650; line-height: 1.25; margin-top: .15rem;
+  color: var(--murekkep); }
+
+/* ---------- why / what / decision ---------- */
+.serit3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1.6rem; margin: 1.2rem 0 1.6rem; }
+.serit3 > div { border-left: 1px solid var(--cizgi); padding: .1rem 0 .1rem 1rem; color: var(--murekkep-2);
+  font-size: .93rem; line-height: 1.6; }
+.serit3 > div:last-child { border-left: 3px solid var(--vurgu); color: var(--murekkep); }
+.serit3 .h { display: block; color: var(--murekkep-3); font-size: .74rem; font-weight: 650; letter-spacing: .04em;
+  margin-bottom: .3rem; }
+.serit3 > div:last-child .h { color: var(--vurgu); }
+.serit3 b { color: var(--murekkep); }
+
+/* ---------- numbers ---------- */
+.kpi-grid { display: grid; gap: 1.2rem; margin: .8rem 0 1.4rem; }
+.kpi { border-top: 1px solid var(--murekkep); padding-top: .55rem; }
+.kpi-e { color: var(--murekkep-2); font-size: .84rem; }
+.kpi-d { font-family: var(--baslik); font-size: 1.9rem; font-weight: 700; line-height: 1.15; color: var(--murekkep);
+  font-variant-numeric: tabular-nums; margin-top: .1rem; }
+.kpi-a { color: var(--murekkep-3); font-size: .78rem; margin-top: .15rem; line-height: 1.4; }
+.buyuk-sayi { border-left: 3px solid var(--vurgu); padding: .2rem 0 .2rem 1rem; height: 100%; }
+.buyuk-sayi .etiket { color: var(--murekkep-2); font-size: .82rem; font-weight: 600; margin-bottom: .3rem; }
+.buyuk-sayi .deger { font-family: var(--baslik); font-size: 2.7rem; font-weight: 750; line-height: 1;
+  color: var(--murekkep); font-variant-numeric: tabular-nums; }
+.buyuk-sayi .aciklama { color: var(--murekkep-2); font-size: .88rem; margin-top: .45rem; line-height: 1.5; }
+
+/* ---------- tables ---------- */
+.tablo { width: 100%; border-collapse: collapse; margin: .5rem 0 1.2rem; font-variant-numeric: tabular-nums; }
+.tablo th { text-align: left; color: var(--murekkep-2); font-size: .8rem; font-weight: 650; padding: .5rem .7rem .5rem 0;
+  border-bottom: 1px solid var(--murekkep); }
+.tablo td { padding: .6rem .7rem .6rem 0; border-bottom: 1px solid var(--cizgi); color: var(--murekkep-2);
+  font-size: .9rem; vertical-align: top; line-height: 1.5; }
+.tablo td:first-child { color: var(--murekkep); font-weight: 600; }
+
+/* ---------- notes ---------- */
+.callout, .warning { padding: .75rem 1rem; margin: .8rem 0 1.1rem; border-radius: 0 6px 6px 0; line-height: 1.55; }
+.callout { border-left: 3px solid var(--vurgu); background: var(--vurgu-zemin); color: var(--murekkep); }
+.warning { border-left: 3px solid #e0a21a; background: var(--amber-zemin); color: var(--murekkep); }
+.kucuk-not, .small-muted { color: var(--murekkep-3); font-size: .82rem; }
+.kucuk-not { margin: -.6rem 0 1.1rem; }
+.yer-tutucu { padding: 1.2rem 1.3rem; border: 1px dashed #e0a21a; border-radius: 6px; color: var(--murekkep-2); }
+
+/* ---------- technology line ---------- */
+.teknoloji { display: flex; flex-wrap: wrap; align-items: baseline; gap: .6rem; margin: -.1rem 0 1.4rem;
+  color: var(--murekkep-2); font-size: .95rem; }
+.teknoloji .et { color: var(--murekkep-3); font-size: .74rem; font-weight: 650; letter-spacing: .04em; }
+
+/* ---------- flows and grouped items ---------- */
+.akis { display: flex; flex-wrap: wrap; align-items: stretch; gap: .5rem; margin: .7rem 0 1.3rem; }
+.akis .adim { flex: 1 1 120px; padding: .7rem .75rem; border: 1px solid var(--cizgi); border-radius: 6px;
+  background: var(--sayfa); text-align: center; }
+.akis .adim.vurgu { border-color: var(--vurgu); }
+.akis .adim .ust { color: var(--murekkep-3); font-size: .72rem; font-weight: 650; }
+.akis .adim .ad { font-weight: 650; margin: .15rem 0; color: var(--murekkep); }
+.akis .adim .alt { color: var(--murekkep-2); font-size: .78rem; line-height: 1.4; }
+.akis .ok { align-self: center; color: var(--murekkep-3); }
+
+.story { border-top: 2px solid var(--murekkep); padding-top: .7rem; height: 100%; }
+.story-icon { font-family: var(--baslik); color: var(--vurgu); font-weight: 700; font-size: .95rem; }
+.story h4 { font-size: 1.08rem; margin: .3rem 0 .4rem; }
+.story p { color: var(--murekkep-2); font-size: .9rem; line-height: 1.55; }
+
+.cizelge { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem 1.6rem; margin: .7rem 0 1.3rem; }
+.cizelge .olay { border-top: 1px solid var(--murekkep); padding-top: .6rem; }
+.cizelge .ad { font-weight: 650; color: var(--murekkep); margin-bottom: .3rem; }
+.cizelge .ne { color: var(--murekkep-2); font-size: .88rem; line-height: 1.5; }
+.cizelge .bedel { color: var(--amber); font-size: .84rem; margin-top: .4rem; }
+.cizelge .karar { color: var(--yesil); font-size: .84rem; margin-top: .2rem; }
+
+.kapanis { margin-top: 1.4rem; padding-top: 1rem; border-top: 2px solid var(--murekkep); font-family: var(--baslik);
+  font-size: 1.25rem; line-height: 1.5; color: var(--murekkep); }
+
+.qr-kutu { display: flex; flex-direction: column; align-items: center; gap: .6rem; margin: 0 auto; padding: 1rem 1.2rem;
+  width: fit-content; border: 1px solid var(--cizgi); border-radius: 6px; background: var(--sayfa); }
+.qr-kutu .qr-b { font-weight: 650; }
+.qr-kutu .qr-kod { line-height: 0; }
+.qr-kutu .qr-kod svg { width: 200px; height: auto; display: block; }
+
+.mimari { width: 100%; }
+.mimari-ipucu { display: none; color: var(--murekkep-3); font-size: .78rem; margin: .1rem 0 .3rem; }
+
+/* ---------- next-chapter link ---------- */
+.transition-box { display: block; margin-top: 2.2rem; padding: 1rem 0 .4rem; border-top: 2px solid var(--murekkep); }
+.transition-box .transition-label, .transition-box .transition-title, .transition-box .transition-text { display: block; }
+.transition-label { color: var(--murekkep-3); font-size: .78rem; font-weight: 650; letter-spacing: .04em; }
+.transition-title { font-family: var(--baslik); font-size: 1.45rem; font-weight: 700; color: var(--murekkep);
+  margin: .15rem 0 .25rem; }
+.transition-text { color: var(--murekkep-2); }
+a.transition-link, a.transition-link:visited { text-decoration: none !important; color: inherit; }
+.transition-devam { display: inline-block; margin-top: .55rem; color: var(--vurgu); font-weight: 650;
+  border-bottom: 1px solid var(--vurgu-acik); }
+a.transition-link:hover .transition-title { color: var(--vurgu); }
+a.transition-link:hover .transition-devam { border-bottom-color: var(--vurgu); }
+
+/* ---------- Streamlit components ---------- */
+[data-testid="stImage"] img { border-radius: 4px; }
+[data-testid="stExpander"] { border: 1px solid var(--cizgi); border-radius: 6px; background: var(--sayfa); }
+[data-testid="stExpander"] details summary p { font-weight: 650; }
+[data-testid="stTabs"] [role="tablist"] { gap: .4rem; border-bottom: 1px solid var(--cizgi); }
+[data-testid="stTabs"] [role="tab"] p { font-weight: 600; }
+[data-testid="stAlert"] { border-radius: 6px; }
+[data-testid="stCaptionContainer"] p { color: var(--murekkep-2); }
+
+/* ---------- sidebar: a table of contents ---------- */
+[data-testid="stSidebar"] { background: var(--kagit-2) !important; border-right: 1px solid var(--cizgi) !important; }
+[data-testid="stSidebar"] > div:first-child { padding-top: 1.1rem; }
+.side-brand { display: flex; align-items: center; gap: .7rem; padding: .4rem .2rem 1rem; margin-bottom: .9rem;
+  border-bottom: 1px solid var(--cizgi); }
+.side-brand-mark { width: 40px; height: 40px; flex: 0 0 40px; display: flex; align-items: center; justify-content: center; }
+.side-brand-mark svg { width: 40px; height: 40px; display: block; }
+.side-brand-title { font-family: var(--baslik); font-weight: 750; font-size: 1.15rem; color: var(--murekkep); }
+.side-nav-kicker { color: var(--murekkep-3); font-size: .76rem; font-weight: 650; letter-spacing: .04em; margin: 0 .2rem .5rem; }
+
+[data-testid="stSidebar"] [role="radiogroup"] { display: flex !important; flex-direction: column !important; gap: 0 !important; }
+[data-testid="stSidebar"] [role="radiogroup"] > div { width: 100%; }
+/* Streamlit 1.5x: radiogroup > div > label[stRadioOption] > (span>input) + div > (circle div, markdown) */
+[data-testid="stSidebar"] [data-testid="stRadioOption"] { width: 100%; margin: 0 !important; padding: .55rem .6rem .55rem .8rem !important;
+  border-left: 3px solid transparent; border-radius: 0 !important; color: var(--murekkep-2) !important; cursor: pointer;
+  transition: color .15s ease, border-color .15s ease; }
+[data-testid="stSidebar"] [data-testid="stRadioOption"] > div > div:not([data-testid="stMarkdownContainer"]) { display: none !important; }
+[data-testid="stSidebar"] [data-testid="stRadioOption"] p { margin: 0 !important; color: inherit !important; font-size: .92rem !important;
+  font-variant-numeric: tabular-nums; }
+[data-testid="stSidebar"] [data-testid="stRadioOption"]:hover { color: var(--murekkep) !important; border-left-color: var(--cizgi); }
+[data-testid="stSidebar"] [data-testid="stRadioOption"]:has(input:checked) { color: var(--murekkep) !important;
+  border-left-color: var(--vurgu); background: var(--sayfa) !important; }
+[data-testid="stSidebar"] [data-testid="stRadioOption"]:has(input:checked) p { font-weight: 650 !important; }
+[data-testid="stSidebar"] [data-testid="stRadioOption"]:has(input:focus-visible) { outline: 2px solid var(--vurgu); outline-offset: -2px; }
+
+.timeline-note { margin: 1rem .2rem .3rem; padding-top: .7rem; border-top: 1px solid var(--cizgi); }
+.timeline-note-label { color: var(--murekkep-3); font-size: .72rem; font-weight: 650; letter-spacing: .04em; }
+.timeline-note-title { color: var(--murekkep); font-size: .85rem; font-weight: 650; margin-top: .15rem; }
+.timeline-note-text { color: var(--murekkep-3); font-size: .74rem; line-height: 1.45; margin-top: .2rem; }
+
+/* ---------- small screens ---------- */
+@media (max-width: 950px) {
+  .kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  .cizelge { grid-template-columns: 1fr; }
+}
+@media (max-width: 700px) {
+  .block-container { padding-left: 1rem !important; padding-right: 1rem !important; }
+  .hero h1 { font-size: 2.3rem; }
+  h2 { font-size: 1.8rem !important; }
+  .serit3 { grid-template-columns: 1fr; gap: 1rem; }
+  .journey-step span { display: none; }
+  .kpi-d { font-size: 1.5rem; }
+  .buyuk-sayi .deger { font-size: 2rem; }
+  .akis .ok { display: none; }
+  .qr-kutu { display: none; }
+  .mimari { overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: .4rem; }
+  .mimari svg { min-width: 880px; }
+  .mimari-ipucu { display: block; }
+  [data-testid="stMarkdownContainer"] table.tablo { display: block !important; overflow-x: auto !important; }
+  [data-testid="stMarkdownContainer"] table.tablo td, [data-testid="stMarkdownContainer"] table.tablo th { min-width: 7.5rem; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }

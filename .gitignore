@@ -1,0 +1,36 @@
+# ---------------------------------------------------------------- data
+# Girdi/cikti artefaktlari depoda YOK. README hangi komutun hangisini
+# urettigini anlatir. Kaggle CSV'si de depoda yok: README indirme
+# baglantisini verir, dosya Data/ altina konur.
+outputs/
+snapshots/
+Data/*
+
+# ------------------------------------------- Vercel / Tailscale / Cloudflare
+# Yayin ve tunel katmani kisiye ozel: Funnel adresi, Vercel proje kimligi,
+# OIDC jetonu ve indirilebilir bir ucuncu taraf ikilisi iceriyor.
+site/
+web/canli.py
+web/araclar/
+gecit.bat
+reporadarcanli.bat
+
+# ------------------------------------------- ucuncu taraf / kisisel gorseller
+# QR dogrudan yayin adresini kodluyor; iki konsept gorselde temsili sayilar
+# ve baska bir kisinin fotografi var.
+figures/panel/QR_reporadarai.svg
+figures/panel/ileride_web.jpeg
+figures/panel/ileride_mobil.jpeg
+
+# ---------------------------------------------------------- ortam ve gecici
+.env
+.env.*
+.idea/
+__pycache__/
+*.pyc
+catboost_info/
+*.log
+.venv/
+
+# ------------------------------------------------------- yerel notlar
+CLAUDE.md

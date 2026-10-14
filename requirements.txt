@@ -1,0 +1,72 @@
+# DS21 Final - "zombi repo" terk tahmini
+# ============================================================================
+# Bu liste `pip freeze` DEGIL. Projedeki 19 .py dosyasi AST ile taranip
+# gercekten import edilen ucuncu-parti modullerin listesi cikarildi (2026-09-11;
+# 2026-09-16'da 19 dosya uzerinde yeniden kosuldu, EKSIK PAKET CIKMADI),
+# sonra her birine calisan surumun ALT SINIRI yazildi. `pip freeze` calisan
+# ortamin tamamini dondurur (200+ paket) ve hangisinin GEREKLI oldugunu soylemez.
+#
+# Alt sinir var, ust sinir YOK: proje bir kutuphane degil bir uygulama, ve
+# surumler bu makinede test edildi. Ust sinir koymak, gelecekteki bir yamayi
+# gereksiz yere engeller.
+#
+# KURULUM
+#   pip install -r requirements.txt
+#
+# ⚠️ BU YETMEZ. pip bunlari kuramaz, elle kurulmalari gerekir:
+#
+#   SERVISLER
+#     1. Docker: pgvector/pgvector:pg17   port 5433, db repoquest, user ds21
+#        docker run -d --name ds21-pgvector --restart unless-stopped \
+#          --network n8n_default -p 5433:5432 -e POSTGRES_USER=ds21 \
+#          -e POSTGRES_PASSWORD="$DS21_PG_PASSWORD" -e POSTGRES_DB=repoquest \
+#          pgvector/pgvector:pg17
+#        --restart unless-stopped SART: makine cokunce n8n kendi kalkar, bu
+#        kalkmaz ve chatbot SESSIZCE bos cevap verir.
+#     2. Ollama (port 11434)
+#        ollama pull qwen3:14b            sohbet, 9,3 GB
+#        ollama pull qwen3-embedding:8b   gomme, 4,7 GB, 4096 boyut
+#     3. n8n 2.31.5 konteyneri (port 5678) - chatbot ajani + cekim akislari.
+#        Akislar n8n/ altindaki 5 JSON'dan ice aktarilir; kimlikler (Postgres,
+#        Ollama, GitHub PAT) n8n arayuzunden elle tanimlanir - JSON'larda YOK.
+#     4. Node.js 18+ (olculdu: v24) - web/gecit.js sohbet gecidini kosturur.
+#        Bagimliligi yok, yalniz standart kutuphane (http, crypto, fs, path).
+#
+#   ORTAM DEGISKENLERI - bunlarsiz zincir SESSIZCE yanlis calisir
+#     DS21_PG_PASSWORD   Postgres parolasi. Kodda duz metin parola YOK.
+#     DS21_EMB_MODEL     qwen3-embedding:8b
+#     DS21_EMB_DIM       4096
+#     DS21_SUFFIX        _qwen8b
+#     Son ucu tanimli degilse DS21_RAG.py, tools/eval_rag.py ve
+#     tools/build_body_index.py sessizce bge-m3'e (1024 boyut) duser ve
+#     4096-vs-1024 uyumsuzlugu ile patlar.
+#     GITHUB_TOKEN       yalniz cekim icin (fine-grained, public repo, read-only).
+# ============================================================================
+
+# --- veri ---
+pandas>=2.3.3
+numpy>=2.3.5
+pyarrow>=21.0.0            # parquet okuma/yazma (pandas'in motoru)
+
+# --- modelleme ---
+catboost>=1.2.10           # SEVK EDILEN model
+lightgbm>=4.7.0            # ablasyon merdiveni ve aday karsilastirmasi
+scikit-learn>=1.9.0        # GroupKFold, metrikler, kalibrasyon
+scipy>=1.16.3              # spearmanr, istatistik
+shap>=0.52.0               # ozellik onemi (F18 + zincirin beeswarm'i)
+joblib>=1.5.2              # model.pkl serilestirme
+
+# --- veritabani ---
+psycopg2-binary>=2.9.12    # PostgreSQL surucusu
+pgvector>=0.5.0            # vector tipi Python tarafi
+
+# --- ag ---
+requests>=2.33.0           # GitHub API, Ollama HTTP, n8n webhook testleri
+
+# --- gorsellestirme ---
+matplotlib>=3.11.1         # 24 sunum figuru (eda_figures.py)
+seaborn>=0.13.2            # zincirin EDA figurleri
+
+# --- sunum paneli (panel_v2) ---
+streamlit>=1.54.0          # panel st.columns(vertical_alignment=) kullaniyor (1.36+)
+plotly>=6.3.0              # 5.x'te HIC denenmedi; 5->6 gecisinde kirici degisiklikler var
