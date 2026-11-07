@@ -161,7 +161,7 @@ hesaplanmaz. Soru anında yapılan tek hesap, sorunun vektöre çevrilmesidir.
 | Eğitim zinciri | Python | Sızıntı denetimi, hedef, özellikler, model, değerlendirme (STEP 1-13) → `model.pkl` | `DS21_Final_v2.py` |
 | Canlı skorlama | Python | Bütün külliyatı bugünün verisiyle skorlar, rozetleri veritabanına yazar | `score_today.py` |
 | Belge ve vektör üretimi | Python + Ollama | Repo belgelerini kurar, `qwen3-embedding:8b` ile gömer, veritabanına yükler | `DS21_RAG.py` · `tools/govde_yukle.py` |
-| Veritabanı | Docker: `ds21-pgvector` (PostgreSQL 17 + pgvector) | Skorlar, rozetler, vektörler ve sorgu kaydı | `requirements.txt` başlığı |
+| Veritabanı | Docker: `repo-radar-ai-pgvector` (PostgreSQL 17 + pgvector) | Skorlar, rozetler, vektörler ve sorgu kaydı | `requirements.txt` başlığı |
 | Sohbet ajanı | n8n: `DS21chat0002` | `qwen3:14b` ile soruyu anlar, araç çağırır, cevabı yazar | `n8n/RepoRadarAI Agent.json` |
 | Anlamsal arama aracı | n8n: `DS21search0001` | Sorguyu vektöre çevirir, pgvector'de arar, sonucu sıralar | `n8n/RepoRadarAI - Anlamsal Arama.json` |
 | Dil modelleri | Ollama (yerel, RTX 4060 Ti 16 GB) | `qwen3:14b` sohbet · `qwen3-embedding:8b` gömme | `gecit.js:8-13` |
@@ -175,7 +175,7 @@ hesaplanmaz. Soru anında yapılan tek hesap, sorunun vektöre çevrilmesidir.
 | Port | Servis | Dışarıya açık mı |
 |---|---|---|
 | 5678 | n8n | Hayır. Funnel'a verilmez. |
-| 5433 → 5432 | `ds21-pgvector` | Hayır |
+| 5433 → 5432 | `repo-radar-ai-pgvector` | Hayır |
 | 11434 | Ollama | Hayır |
 | 8787 | Geçit | Evet, Funnel 443 üzerinden |
 | 8611 | Panel | Evet, Funnel 8443 üzerinden |
@@ -232,9 +232,9 @@ ilk adım ayrı bir vektör veritabanı değildir: `qwen3-embedding` MRL ile eğ
 *(Kırpma deneyinin sayıları [Bölüm 9](#9-rag)'da.)*
 
 **Neden veritabanı ayrı bir konteyner?**
-Aynı makinede başka projelerin de PostgreSQL'i var. `ds21-pgvector`, pgvector eklentili ayrı bir
-imajdır ve ayrı bir portta (5433) çalışır. n8n ile aynı Docker ağındadır (`n8n_default`), n8n ona
-konteyner adıyla bağlanır. Yeniden başlatma politikası `unless-stopped`: makine yeniden
+Aynı makinede başka projelerin de PostgreSQL'i var. `repo-radar-ai-pgvector`, pgvector eklentili ayrı bir
+imajdır ve ayrı bir portta (5433) çalışır. n8n ona `host.docker.internal:5433` üzerinden bağlanır (yalnızca
+127.0.0.1'e açık); sürüm `compose.yaml` ile kurulur. Yeniden başlatma politikası `unless-stopped`: makine yeniden
 başladığında n8n kendiliğinden ayağa kalkıyordu, veritabanı kalkmıyordu ve sohbet sessizce
 boş cevap veriyordu (`requirements.txt` başlığı).
 
@@ -1402,7 +1402,7 @@ kadar açıktır. Adım 3 bu yüzden koşulsuz çalışır: `DS21_RAG.py` çöks
 
 | Servis | Port | Not |
 |---|---|---|
-| `ds21-pgvector` (Docker, `pgvector/pgvector:pg17`) | 5433 | `--restart unless-stopped` **şart** |
+| `repo-radar-ai-pgvector` (Docker, `pgvector/pgvector:pg17`) | 5433 | `--restart unless-stopped` **şart** |
 | n8n 2.31.5 (Docker) | 5678 | Kimlik bilgileri (PostgreSQL, Ollama, GitHub PAT) arayüzden tanımlanır; akış JSON'larında yok |
 | Ollama | 11434 | `qwen3:14b` (9,3 GB) + `qwen3-embedding:8b` (4,7 GB) |
 | Geçit (`gecit.bat`) | 8787 | Süreç düşerse 3 sn içinde yeniden başlatılır |
@@ -1496,7 +1496,7 @@ belge ve artefaktlar esas alınır.
 | `tools/mimari_svg.py` | Artefaktlar · `panel_v2/grafik.py` | `figures/mimari/*.svg` (bu belgedeki şemalar) | README |
 | `panel_v2/` (`app.py` · `veri.py` · `grafik.py` · `tema.css`) | Artefaktlar · figürler | 8 bölümlük sunum paneli (`panel_v2.bat`, port 8611) | — |
 | `tools/make_index.py` | `DS21_Final_v2.py` | Dosyanın içindekiler bloğu (satır numaraları) | — |
-| `tools/make_n8n_inputs.py` | CSV | n8n'in iş listeleri (`C:\Miuul\...`) | n8n çekim akışları |
+| `tools/make_n8n_inputs.py` | CSV | n8n'in iş listeleri (`%REPORADAR_DATA_DIR%\...`) | n8n çekim akışları |
 | `web/gecit.js` | n8n webhook'u | `/sor` · `/durum` · `/saglik` | Site |
 | `n8n/*.json` (5) | — | Çekim, arama ve sohbet akışlarının dışa aktarımları | n8n |
 

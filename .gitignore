@@ -34,3 +34,7 @@ catboost_info/
 
 # ------------------------------------------------------- yerel notlar
 CLAUDE.md
+
+# local data (copied from C:\Miuul + team repo; large, rebuilt by the pipeline)
+data/
+!.env.example
