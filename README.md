@@ -14,6 +14,12 @@ Terk edilmeyecek yapay zekâ araçlarını öneren RAG tabanlı öneri sistemi.
 
 ---
 
+## Geliştirme ortamı
+
+- Python 3.13.9 (`.venv`, `pip install -r requirements.txt`).
+- Veritabanı: `docker compose config` ile doğrulanan `compose.yaml` (`.env.example` değişken adlarını verir).
+- Paylaşılan veri klasörü: `REPORADAR_DATA_DIR` (varsayılan `data\ds21final`).
+
 ## İçindekiler
 
 0. [Özet](#0-özet)
