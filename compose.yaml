@@ -7,7 +7,7 @@ services:
   pgvector:
     image: pgvector/pgvector:pg17
     container_name: repo-radar-ai-pgvector
-    restart: unless-stopped
+    restart: always  # unless-stopped does not return after a Docker Desktop quit/start (measured 2026-11-07)
     env_file: .env
     ports:
       - "127.0.0.1:5433:5432"
