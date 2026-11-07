@@ -2,7 +2,7 @@
 ###############################################################
 # FAZ 2 son adimi | YENI README'leri devreye al
 ###############################################################
-# n8n README'leri C:\Miuul\ds21final\readme\ altina yazdi.
+# n8n README'leri $REPORADAR_DATA_DIR\readme\ altina yazdi.
 # Bu betik onlari DOGRULAR, sonra Data/readme_raw/ ile takas eder.
 #
 # TAKAS SIRASI - onemli:
@@ -33,7 +33,8 @@ import pandas as pd
 KOK = os.path.dirname(os.path.abspath(__file__))
 CSV = os.path.join(KOK, "Data", "github_ai_intelligence_2026.csv")
 ESKI = os.path.join(KOK, "Data", "readme_raw")
-YENI = r"C:\Miuul\ds21final\readme"
+DATA_DIR = os.environ.get("REPORADAR_DATA_DIR", os.path.join(KOK, "data", "ds21final"))
+YENI = os.path.join(DATA_DIR, "readme")
 
 # Cekim sirasinda 20 repoluk 'test' kademesi de ayni klasore yazdi;
 # eksiklik hesabinda onlar da sayilir, ayrica ele alinmaz.

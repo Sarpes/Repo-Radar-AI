@@ -4,7 +4,7 @@ REM ===========================================================
 REM  aylik.bat  ^|  AYLIK README TAZELEME - Python tarafi
 REM ===========================================================
 REM  n8n DS21readme0001 ayin 1'inde 03:00'te kulliyatin TAMAMINI
-REM  C:\Miuul\ds21final\readme\ altina ceker. Bu betik ondan
+REM  %REPORADAR_DATA_DIR%\readme\ altina ceker. Bu betik ondan
 REM  SONRAKI zinciri kosturur.
 REM
 REM  ⚠️ haftalik.bat'tan FARKI: BU ZINCIR TRUNCATE PENCERESI ACAR.
@@ -26,7 +26,8 @@ REM ===========================================================
 set "KOK=%~dp0"
 set "PY=%USERPROFILE%\anaconda3\python.exe"
 set "LOG=%KOK%outputs\aylik.log"
-set "HAZIRLIK=C:\Miuul\ds21final\readme"
+if not defined REPORADAR_DATA_DIR set "REPORADAR_DATA_DIR=%KOK%data\ds21final"
+set "HAZIRLIK=%REPORADAR_DATA_DIR%\readme"
 set "KURU="
 if /I "%~1"=="--kuru" set "KURU=1"
 
@@ -45,9 +46,9 @@ echo [%ZA%] aylik readme tazeleme basladi
 REM ---------------------------------------------------------------
 REM  0 - ON KONTROL: pgvector ayakta mi?
 REM ---------------------------------------------------------------
-docker exec ds21-pgvector pg_isready -U ds21 -d repoquest >nul 2>&1
+docker exec repo-radar-ai-pgvector pg_isready -U ds21 -d repoquest >nul 2>&1
 if errorlevel 1 (
-  set "HATA=pgvector yanit vermiyor - 'docker start ds21-pgvector' deneyin"
+  set "HATA=pgvector yanit vermiyor - 'docker start repo-radar-ai-pgvector' deneyin"
   goto :HATA
 )
 

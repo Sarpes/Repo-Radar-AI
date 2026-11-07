@@ -2,7 +2,7 @@
 ###############################################################
 # n8n GIRDI DOSYALARI  |  refresh pipeline, Faz 1 + Faz 2
 ###############################################################
-# n8n cannot read the project folder - only C:\Miuul (mounted as /data). This
+# n8n cannot read the project folder - only the data dir (mounted as /data). This
 # script writes the repo lists it needs there, in the exact shape the existing
 # workflows expect.
 #
@@ -27,7 +27,8 @@ import pandas as pd
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CSV_PATH = os.path.join(PROJECT_ROOT, "Data", "github_ai_intelligence_2026.csv")
 README_DIR = os.path.join(PROJECT_ROOT, "Data", "readme_raw")
-OUT_DIR = r"C:\Miuul\ds21final\input"
+DATA_DIR = os.environ.get("REPORADAR_DATA_DIR", os.path.join(PROJECT_ROOT, "data", "ds21final"))
+OUT_DIR = os.path.join(DATA_DIR, "input")
 
 N_CHUNKS = 5          # 24,664 / 5 ~ 4,933 -> ~1 h each, under the 5 h executionTimeout
 N_SMOKE = 20

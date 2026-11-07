@@ -27,6 +27,7 @@ REM ===========================================================
 
 set "KOK=%~dp0"
 set "PY=%USERPROFILE%\anaconda3\python.exe"
+if not defined REPORADAR_DATA_DIR set "REPORADAR_DATA_DIR=%KOK%data\ds21final"
 set "LOG=%KOK%outputs\haftalik.log"
 set "KURU="
 if /I "%~1"=="--kuru" set "KURU=1"
@@ -43,9 +44,9 @@ REM  0 - ON KONTROL: pgvector ayakta mi?
 REM      Ayakta degilse score_today --write-db sonunda patlardi,
 REM      ama o ana kadar tarihce.py bosa kosmus olurdu.
 REM ---------------------------------------------------------------
-docker exec ds21-pgvector pg_isready -U ds21 -d repoquest >nul 2>&1
+docker exec repo-radar-ai-pgvector pg_isready -U ds21 -d repoquest >nul 2>&1
 if errorlevel 1 (
-  set "HATA=pgvector yanit vermiyor - 'docker start ds21-pgvector' deneyin"
+  set "HATA=pgvector yanit vermiyor - 'docker start repo-radar-ai-pgvector' deneyin"
   goto :HATA
 )
 call :ZAMAN & echo [%ZA%]   on kontrol: pgvector ayakta >> "%LOG%"
@@ -56,7 +57,7 @@ REM       _kilit.json 20 dakikadan taze ise bir tur devam ediyordur.
 REM       tarihce.py'in gerileme kapisi veri kaybini zaten onler,
 REM       ama yarim turun ortasinda birlestirmenin anlami yok.
 REM ---------------------------------------------------------------
-"%PY%" -c "import os,sys,time; y=r'C:\Miuul\ds21final\tarihce\_kilit.json'; sys.exit(1 if os.path.exists(y) and time.time()-os.path.getmtime(y)<1200 else 0)"
+"%PY%" -c "import os,sys,time; y=os.path.join(os.environ['REPORADAR_DATA_DIR'],'tarihce','_kilit.json'); sys.exit(1 if os.path.exists(y) and time.time()-os.path.getmtime(y)<1200 else 0)"
 if errorlevel 1 (
   set "HATA=cekim su an kosuyor (_kilit.json taze) - tur bitince tekrar deneyin"
   goto :HATA
