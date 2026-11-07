@@ -1,0 +1,19 @@
+# RepoRadarAI vector database. Replaces the hand-run `docker run ds21-pgvector`.
+# The container switch happens in the cutover task; until then the old
+# container keeps the same external volume and port 5433.
+name: repo-radar-ai
+
+services:
+  pgvector:
+    image: pgvector/pgvector:pg17
+    container_name: repo-radar-ai-pgvector
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - ds21_pgvector_data:/var/lib/postgresql/data
+
+volumes:
+  ds21_pgvector_data:
+    external: true

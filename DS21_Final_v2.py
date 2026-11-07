@@ -837,7 +837,8 @@ def commit_target(names):
 
 
 PUSH_PATH_LBL = os.path.join(OUTPUT_DIR, "push_events.parquet")
-META_GLOB_LBL = r"C:\Miuul\ds21final\meta\meta_*.jsonl"
+DATA_DIR = os.environ.get("REPORADAR_DATA_DIR", os.path.join(PROJECT_ROOT, "data", "ds21final"))
+META_GLOB_LBL = os.path.join(DATA_DIR, "meta", "meta_*.jsonl")
 EK_META_PATH = os.path.join(OUTPUT_DIR, "ek_meta.jsonl")   # cek_meta_eksik.py
 C_KINDS = {"push", "pr_merge", "merge_queue_merge", "force_push"}
 # Push fetch states a label needs. MUST equal PUSH_LOOKED / PUSH_TRUNCATED in

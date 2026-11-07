@@ -17,8 +17,8 @@
 #
 #   SERVISLER
 #     1. Docker: pgvector/pgvector:pg17   port 5433, db repoquest, user ds21
-#        docker run -d --name ds21-pgvector --restart unless-stopped \
-#          --network n8n_default -p 5433:5432 -e POSTGRES_USER=ds21 \
+#        docker run -d --name repo-radar-ai-pgvector --restart unless-stopped \
+#          -p 127.0.0.1:5433:5432 -e POSTGRES_USER=ds21 \
 #          -e POSTGRES_PASSWORD="$DS21_PG_PASSWORD" -e POSTGRES_DB=repoquest \
 #          pgvector/pgvector:pg17
 #        --restart unless-stopped SART: makine cokunce n8n kendi kalkar, bu

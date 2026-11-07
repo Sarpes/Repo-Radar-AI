@@ -52,7 +52,8 @@ import pandas as pd
 
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 CSV_PATH = os.path.join(PROJECT_ROOT, "Data", "github_ai_intelligence_2026.csv")
-META_GLOB = r"C:\Miuul\ds21final\meta\meta_*.jsonl"
+DATA_DIR = os.environ.get("REPORADAR_DATA_DIR", os.path.join(PROJECT_ROOT, "data", "ds21final"))
+META_GLOB = os.path.join(DATA_DIR, "meta", "meta_*.jsonl")
 STATUS_PATH = os.path.join(PROJECT_ROOT, "outputs", "refresh_status.jsonl")
 SNAP_DIR = os.path.join(PROJECT_ROOT, "snapshots")
 

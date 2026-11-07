@@ -492,8 +492,8 @@ print("\nSTEP 14.2 complete.")
 # read Postgres natively. So the index moves into a database.
 #
 # CONTAINER (created 2026-09-06, deliberately separate):
-#   ds21-pgvector · pgvector/pgvector:pg17 · port 5433 · network n8n_default
-#   n8n reaches it as ds21-pgvector:5432, by service name, no IP needed.
+#   repo-radar-ai-pgvector (was ds21-pgvector) · pgvector/pgvector:pg17 · port 5433
+#   n8n reaches it as host.docker.internal:5433 (compose.yaml, project repo-radar-ai).
 #   ⛔ NOT installed into digischafak-postgres - that is Sarp's live job
 #      system and an extension install is a change to it.
 #

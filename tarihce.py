@@ -67,8 +67,9 @@ PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 OUTPUT_DIR = os.path.join(PROJECT_ROOT, "outputs")
 CSV_PATH = os.path.join(PROJECT_ROOT, "Data", "github_ai_intelligence_2026.csv")
 
-# n8n can only write under C:\Miuul (mounted as /data in the container).
-FETCH_DIR = r"C:\Miuul\ds21final\tarihce"
+# n8n can only write under the data dir (mounted as /data in the container).
+DATA_DIR = os.environ.get("REPORADAR_DATA_DIR", os.path.join(PROJECT_ROOT, "data", "ds21final"))
+FETCH_DIR = os.path.join(DATA_DIR, "tarihce")
 F_COMMIT_WEEKS = os.path.join(FETCH_DIR, "commit_weeks.jsonl")
 F_COMMIT_STATE = os.path.join(FETCH_DIR, "commit_durum.jsonl")
 F_PUSH_EVENTS = os.path.join(FETCH_DIR, "push_events.jsonl")
@@ -83,7 +84,7 @@ OUT_LOG = os.path.join(OUTPUT_DIR, "fetch_log.jsonl")
 # takili kaldi ve workflow onlari BIR DAHA denemeyecekti. cek_eksikler.py o
 # 236'yi PAT ile tek tek cekti (12'si kurtarildi).
 #
-# NEDEN AYRI DOSYA: `C:\Miuul\ds21final\tarihce\*` YAZMA yasakli (n8n'in canli
+# NEDEN AYRI DOSYA: `$REPORADAR_DATA_DIR\tarihce\*` YAZMA yasakli (n8n'in canli
 # dizini). Ek kayitlar bu yuzden proje klasorune yaziliyor ve burada ana
 # dosyalarin uzerine EKLENIYOR. Kayit secimi `latest_per_repo` ile zaman
 # damgasina gore yapildigi icin bu kayitlar - bugun cekildikleri icin -

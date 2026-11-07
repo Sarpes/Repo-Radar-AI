@@ -20,11 +20,14 @@
 
 import argparse
 import json
+import os
 import pickle
 import sys
 import time
 import urllib.request
 from pathlib import Path
+
+DATA_DIR = os.environ.get("REPORADAR_DATA_DIR", os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "ds21final"))
 
 import numpy as np
 import pandas as pd
@@ -102,7 +105,7 @@ def varsayilan_dallar():
         if ad not in d or an >= d[ad][1]:
             d[ad] = (dal, an)
 
-    for yol in sorted(Path(r"C:\Miuul\ds21final\meta").glob("meta_*.jsonl")):
+    for yol in sorted(Path(DATA_DIR, "meta").glob("meta_*.jsonl")):
         for s in open(yol, encoding="utf-8"):
             if not s.strip():
                 continue
@@ -138,7 +141,7 @@ yok_cer = f[f["full_name"].isin(set(fl.loc[fl["push_status"] == "yok", "full_nam
 # README fetch status, same rule as sunum/kosum/prob_cekim_gelmeyen.py
 disk = {p.name for p in (ROOT / "Data" / "readme_raw").iterdir()}
 rm_eksik = csv.loc[~(csv["owner"] + "__" + csv["name"] + ".md").isin(disk), "full_name"]
-mi = pd.DataFrame([json.loads(x) for x in open(r"C:\Miuul\ds21final\logs\misses.jsonl", encoding="utf-8") if x.strip()])
+mi = pd.DataFrame([json.loads(x) for x in open(os.path.join(DATA_DIR, "logs", "misses.jsonl"), encoding="utf-8") if x.strip()])
 zaman_asimi = mi.assign(t=mi["hata"].astype(str).str.contains("timeout")).groupby("full_name")["t"].any()
 rm_404 = int(rm_eksik.map(zaman_asimi).eq(False).sum())
 
